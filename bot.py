@@ -1,4 +1,4 @@
-﻿import requests
+import requests
 import json
 from web3 import Web3
 import os
@@ -26,6 +26,29 @@ HEADERS = {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0"
 }
 
+def load_proxies(filename="proxy.txt"):
+    proxies = []
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        proxies.append(line)
+        except Exception as e:
+            print(f"{Fore.RED}ファイル {filename} を読み込めませんでした：{e}{Style.RESET_ALL}")
+    return proxies
+
+def get_proxy_url(proxy):
+    if not proxy:
+        return None
+    if "://" in proxy:
+        return {"http": proxy, "https": proxy}
+    if "@" in proxy:
+        user_pass, ip_port = proxy.split("@")
+        return {"http": f"http://{user_pass}@{ip_port}", "https": f"https://{user_pass}@{ip_port}"}
+    return {"http": f"http://{proxy}", "https": f"https://{proxy}"}
+
 def generate_ethereum_account():
     w3 = Web3()
     account = w3.eth.account.create()
@@ -45,14 +68,16 @@ def save_to_json(address, private_key, filename="address.json"):
     except Exception as e:
         print(f"{Fore.RED}ファイル {filename} に保存できませんでした：{e}{Style.RESET_ALL}")
 
-def register_user(wallet_address, referral_code):
+def register_user(wallet_address, referral_code, proxies, proxy_index):
     url = f"{BASE_URL}/users/initialize"
     payload = {
         "walletAddress": wallet_address,
         "referralCode": referral_code
     }
+    proxy = proxies[proxy_index % len(proxies)] if proxies else None
+    proxy_dict = get_proxy_url(proxy)
     try:
-        response = requests.post(url, headers=HEADERS, json=payload)
+        response = requests.post(url, headers=HEADERS, json=payload, proxies=proxy_dict)
         response.raise_for_status()
         response_data = response.json()
         token = response_data.get("token")
@@ -67,13 +92,15 @@ def register_user(wallet_address, referral_code):
         print(f"{Fore.RED}トークンを取得できませんでした：{e}{Style.RESET_ALL}")
         return None
 
-def clear_task(token, task_id):
+def clear_task(token, task_id, proxies, proxy_index):
     url = f"{BASE_URL}/tasks/{task_id}/complete/13044"
     headers = HEADERS.copy()
     headers["authorization"] = f"Bearer {token}"
     payload = {}
+    proxy = proxies[proxy_index % len(proxies)] if proxies else None
+    proxy_dict = get_proxy_url(proxy)
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, proxies=proxy_dict)
         response.raise_for_status()
         return True
     except requests.RequestException as e:
@@ -92,6 +119,12 @@ def main():
     print(f"{Fore.YELLOW}║   Otomatisasi tugas akun Baishi ArenaVS      ║{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}║  Developed by: https://t.me/sentineldiscus   ║{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}╚══════════════════════════════════════════════╝{Style.RESET_ALL}")
+    
+    proxies = load_proxies()
+    if proxies:
+        print(f"{Fore.GREEN}{len(proxies)} 個のプロキシを読み込みました{Style.RESET_ALL}")
+    else:
+        print(f"{Fore.YELLOW}プロキシを使用しません{Style.RESET_ALL}")
     
     referral_code = input("リファラルコードを入力してください：").strip()
     while True:
@@ -112,15 +145,15 @@ def main():
         
         save_to_json(wallet_address, private_key)
         
-        token = register_user(wallet_address, referral_code)
+        token = register_user(wallet_address, referral_code, proxies, request_num - 1)
         if not token:
             print(f"{Fore.RED}リファラル {request_num} を中止しました：トークンを取得できませんでした{Style.RESET_ALL}")
             continue
         
-        countdown(30)
+        countdown(15)
         task_list = [1, 6, 12, 13, 14, 15, 16]
         for task_id in task_list:
-            clear_task(token, task_id)
+            clear_task(token, task_id, proxies, request_num - 1)
         
         print(f"{Fore.GREEN}リファラル {request_num} / {num_requests} が完了しました{Style.RESET_ALL}")
 
